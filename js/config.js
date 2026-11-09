@@ -36,6 +36,6 @@ window.APP_CONFIG = {
   PAY: {
     ACCOUNT_NAME:   "Augustine Ikechukwu David",
     ACCOUNT_NUMBER: "9138072232",
-    BANK_NAME:      ""            // <-- type your bank name here, e.g. "Opay" or "GTBank"
+    BANK_NAME:      "Opay Bank"            // <-- type your bank name here, e.g. "Opay" or "GTBank"
   }
 };
