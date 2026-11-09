@@ -1,0 +1,77 @@
+/* ─── STATS PAGE ─── */
+#page-stats .empty-state {
+  margin-top: 0.5rem;
+}
+
+.trend-up   { color: var(--green); }
+.trend-down { color: var(--red); }
+.trend-flat { color: var(--text2); }
+
+.stat-meta--accent {
+  color: var(--accent2);
+}
+
+/* ─── CANDLESTICK CHART EXTRAS ─── */
+.chart-card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chart-card-title-row .chart-card-title {
+  margin-bottom: 0;
+}
+
+.candle-legend {
+  display: flex;
+  gap: 14px;
+}
+
+.candle-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.candle-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.candle-swatch--up { background: var(--green); }
+.candle-swatch--down { background: var(--red); }
+
+.candle-hint {
+  font-size: 11.5px;
+  color: var(--text3);
+  margin-top: 1rem;
+  line-height: 1.5;
+}
+
+.stats-tf-btn {
+  background: none;
+  border: none;
+  color: var(--text3);
+  font-family: var(--font);
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 7px 16px;
+  border-radius: 99px;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.stats-tf-btn:hover { color: var(--text2); }
+
+.stats-tf-btn.active {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 12px var(--accent-glow);
+}
