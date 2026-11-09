@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>fsociety // admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #030504;
+    --panel: #070c09;
+    --line: #12331f;
+    --fg: #b9f5d0;
+    --dim: #5f8f72;
+    --hi: #3dff8f;
+    --warn: #ffb02e;
+    --bad: #ff3b3b;
+    --mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--fg); font-family: var(--mono); font-size: 14px; line-height: 1.55; }
+  body {
+    min-height: 100vh;
+    background-image: repeating-linear-gradient(0deg, rgba(61,255,143,.035) 0 1px, transparent 1px 3px);
+  }
+  button, input, select { font: inherit; color: inherit; }
+  a { color: var(--hi); }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 18px 14px 60px; }
+
+  .boot { color: var(--dim); white-space: pre-wrap; min-height: 6.5em; }
+  .boot b { color: var(--hi); font-weight: 500; }
+  .cursor::after { content: '█'; color: var(--hi); animation: blink 1s steps(1) infinite; margin-left: 2px; }
+  @keyframes blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .cursor::after { animation: none; } }
+
+  .btn {
+    background: transparent; border: 1px solid var(--hi); color: var(--hi);
+    padding: 7px 12px; cursor: pointer; letter-spacing: .02em;
+  }
+  .btn:hover:not(:disabled) { background: var(--hi); color: #02140a; }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .btn:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--warn); outline-offset: 2px; }
+  .btn.bad { border-color: var(--bad); color: var(--bad); }
+  .btn.bad:hover:not(:disabled) { background: var(--bad); color: #190303; }
+  .btn.dim { border-color: var(--line); color: var(--dim); }
+  .btn.dim:hover:not(:disabled) { border-color: var(--hi); background: transparent; color: var(--hi); }
+
+  .login, .denied { margin-top: 18px; display: grid; gap: 14px; justify-items: start; }
+  .denied .big { color: var(--bad); font-size: 20px; }
+
+  .hdr { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 14px; }
+  .hdr .who { color: var(--dim); font-size: 12.5px; word-break: break-all; }
+  .hdr .title { color: var(--hi); font-size: 16px; font-weight: 600; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
+  .stat { border: 1px solid var(--line); background: var(--panel); padding: 10px 12px; }
+  .stat .n { font-size: 26px; color: var(--hi); font-weight: 600; line-height: 1.1; }
+  .stat .l { color: var(--dim); font-size: 12px; }
+  .stat.alert .n { color: var(--warn); }
+
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: center; }
+  .search { flex: 1 1 220px; display: flex; align-items: center; border: 1px solid var(--line); background: var(--panel); padding: 0 10px; }
+  .search span { color: var(--hi); margin-right: 8px; }
+  .search input { flex: 1; background: transparent; border: none; padding: 9px 0; outline: none; min-width: 0; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .chip { border: 1px solid var(--line); background: transparent; color: var(--dim); padding: 4px 10px; cursor: pointer; font-size: 12.5px; }
+  .chip.on { border-color: var(--hi); color: var(--hi); }
+  .tools { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .tools .btn { font-size: 12.5px; padding: 6px 10px; }
+
+  .rows { display: grid; gap: 8px; }
+  .row { border: 1px solid var(--line); background: var(--panel); padding: 10px 12px; display: grid; gap: 8px; }
+  .row.claim { border-color: var(--warn); }
+  .row .top { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: baseline; }
+  .row .mail { color: var(--fg); font-weight: 500; word-break: break-all; }
+  .row .nm { color: var(--dim); font-size: 12.5px; }
+  .tag { font-size: 11.5px; padding: 1px 8px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; }
+  .tag.prem { border-color: var(--hi); color: var(--hi); }
+  .tag.exp { border-color: var(--bad); color: var(--bad); }
+  .tag.claim { border-color: var(--warn); color: var(--warn); }
+  .row .meta { color: var(--dim); font-size: 12px; display: flex; gap: 14px; flex-wrap: wrap; }
+  .row .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+  .row .acts .btn { font-size: 12.5px; padding: 5px 10px; }
+  .empty { color: var(--dim); padding: 20px 0; }
+
+  .log { margin-top: 18px; border-top: 1px dashed var(--line); padding-top: 10px; color: var(--dim); font-size: 12.5px; max-height: 140px; overflow: auto; }
+  .log div b { color: var(--hi); font-weight: 500; }
+  .hide { display: none !important; }
+
+  @media (max-width: 640px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    html, body { font-size: 13.5px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="boot" class="boot cursor"></div>
+
+  <div id="login" class="login hide">
+    <p>&gt; restricted area. authenticate with the admin Google account.</p>
+    <button class="btn" id="btn-login">[ authenticate with google ]</button>
+    <p id="login-msg" style="color:var(--bad)"></p>
+  </div>
+
+  <div id="denied" class="denied hide">
+    <div class="big">ACCESS DENIED</div>
+    <p>&gt; <span id="denied-mail"></span> is not authorised.</p>
+    <button class="btn dim" id="btn-denied-out">[ sign out ]</button>
+  </div>
+
+  <div id="panel" class="hide">
+    <div class="hdr">
+      <div><div class="title">fsociety@grade-pilot:~# admin</div><div class="who" id="who"></div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn dim" id="btn-refresh">[ refresh ]</button>
+        <button class="btn dim" id="btn-out">[ logout ]</button>
+      </div>
+    </div>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="bar">
+      <label class="search"><span>grep&gt;</span><input id="q" type="search" placeholder="email or name" autocomplete="off" /></label>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div class="tools">
+      <button class="btn" id="btn-copy">copy emails</button>
+      <button class="btn" id="btn-mail">mail all (bcc)</button>
+      <button class="btn" id="btn-csv">export csv</button>
+    </div>
+
+    <div class="rows" id="rows"></div>
+    <div class="log" id="log"></div>
+  </div>
+</div>
+<script type="module" src="js/admin.js"></script>
+</body>
+</html>

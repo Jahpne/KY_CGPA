@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CGPA Calculator — Nigerian 5.0 Scale</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/nav.css" />
+  <link rel="stylesheet" href="css/tools.css" />
+  <link rel="stylesheet" href="css/stats.css" />
+  <link rel="stylesheet" href="css/account.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+
+  <!-- TOP BAR -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">
+        <img src="image/cgpa_logo_clean.png" alt="CGPA Calculator Logo" />
+      </div>
+      <div>
+        <div class="logo-text">GRADE PILOT</div>
+        <div class="logo-sub">Nigerian 5.0 GCPA Scale Calculator</div>
+      </div>
+    </div>
+    <button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle menu">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <span class="header-badge">University Edition</span>
+    <div id="auth-slot" class="auth-slot"></div>
+  </header>
+
+  <div class="app-layout">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar collapsed" id="sidebar">
+      <button class="collapse-toggle" id="collapse-toggle" onclick="toggleCollapse()" title="Expand menu">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+
+      <nav class="side-nav">
+        <button class="nav-btn active" data-page="calculator" onclick="switchPage('calculator')" title="Calculator">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="9" y2="11"/><line x1="12" y1="11" x2="13" y2="11"/><line x1="16" y1="11" x2="17" y2="11"/><line x1="8" y1="15" x2="9" y2="15"/><line x1="12" y1="15" x2="13" y2="15"/><line x1="16" y1="15" x2="17" y2="15"/></svg>
+          <span>Calculator</span>
+        </button>
+        <button class="nav-btn" data-page="tools" onclick="switchPage('tools')" title="Student Tools">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          <span>Student Tools</span>
+        </button>
+        <button class="nav-btn" data-page="stats" onclick="switchPage('stats')" title="Statistics">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          <span>Statistics</span>
+        </button>
+        <button class="nav-btn" data-page="library" onclick="switchPage('library')" title="Result Library">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+            <path d="M6.5 8H20V17H6.5V8Z"/>
+          </svg>
+          <span>Result Library</span>
+        </button>
+      </nav>
+
+      <nav class="side-nav">
+        <a class="nav-btn nav-btn--feedback" href="https://wa.me/23407049094260" target="_blank" rel="noopener" title="Send Feedback on WhatsApp">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+          </svg>
+          <span>Send Feedback</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-footer-text">5.0 grading scale<br/>Nigerian universities</div>
+      </div>
+    </aside>
+
+    <!-- OVERLAY (mobile) -->
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+    <!-- CONTENT -->
+    <div class="content">
+
+  <!-- ════════════ CALCULATOR PAGE ════════════ -->
+  <main id="page-calculator" class="page active">
+
+    <!-- STATS -->
+    <div class="hero">
+      <div class="stat-card stat-card--primary">
+        <div class="stat-label">Cumulative GPA</div>
+        <div class="stat-value" id="cgpa-val">—</div>
+        <div class="stat-meta" id="cgpa-meta">Add courses to calculate</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Class of degree</div>
+        <div id="class-badge-wrap">
+          <div class="stat-value stat-value--muted">—</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total credit units</div>
+        <div class="stat-value" id="units-val">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Quality points</div>
+        <div class="stat-value" id="qp-val">0</div>
+      </div>
+    </div>
+
+    <!-- TOOLBAR -->
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <span class="section-title">Your levels</span>
+        <span class="level-count" id="level-count">0 added</span>
+      </div>
+      <div class="add-level-wrap">
+        <select class="select-styled" id="level-select">
+          <option value="100">100 level</option>
+          <option value="200">200 level</option>
+          <option value="300">300 level</option>
+          <option value="400">400 level</option>
+          <option value="500">500 level</option>
+        </select>
+        <button class="btn-primary" onclick="addLevel()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          Add level
+        </button>
+      </div>
+    </div>
+  
+
+    <!-- LEVELS -->
+    <div id="levels-container"></div>
+
+      <!-- AUTO-SAVE TOGGLE -->
+    <div class="autosave-bar">
+      <label class="autosave-toggle" for="autosave-switch">
+        <input type="checkbox" id="autosave-switch" onchange="handleAutoSaveToggle(this)" />
+        <span class="autosave-slider"></span>
+      </label>
+      <span class="autosave-label">
+        Auto-save
+        <span class="autosave-status" id="autosave-status">On</span>
+      </span>
+      <span class="autosave-cloud" id="cloud-sync-status"></span>
+      <button class="btn-clear-save" id="btn-clear-save" onclick="clearSavedData()" title="Clear saved data">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+        Clear
+      </button>
+    </div>
+
+    <!-- GRADE GUIDE -->
+    <div class="guide-section">
+      <div class="guide-title">Grade reference</div>
+      <div class="guide-grid">
+        <div class="guide-card">
+          <div class="guide-score">70 – 100%</div>
+          <div class="guide-letter guide-letter--a">A</div>
+          <div class="guide-gp">5.0 grade points</div>
+        </div>
+        <div class="guide-card">
+          <div class="guide-score">60 – 69%</div>
+          <div class="guide-letter guide-letter--b">B</div>
+          <div class="guide-gp">4.0 grade points</div>
+        </div>
+        <div class="guide-card">
+          <div class="guide-score">50 – 59%</div>
+          <div class="guide-letter guide-letter--c">C</div>
+          <div class="guide-gp">3.0 grade points</div>
+        </div>
+        <div class="guide-card">
+          <div class="guide-score">45 – 49%</div>
+          <div class="guide-letter guide-letter--d">D</div>
+          <div class="guide-gp">2.0 grade points</div>
+        </div>
+        <div class="guide-card">
+          <div class="guide-score">40 – 44%</div>
+          <div class="guide-letter guide-letter--e">E</div>
+          <div class="guide-gp">1.0 grade points</div>
+        </div>
+        <div class="guide-card">
+          <div class="guide-score">0 – 39%</div>
+          <div class="guide-letter guide-letter--f">F</div>
+          <div class="guide-gp">0.0 grade points</div>
+        </div>
+      </div>
+
+      <div class="guide-title guide-title--spaced">Degree classification</div>
+      <div class="thresholds">
+        <div class="thresh-item">
+          <span class="thresh-name thresh-name--first">First Class</span>
+          <span class="thresh-range">CGPA ≥ 4.50</span>
+        </div>
+        <div class="thresh-item">
+          <span class="thresh-name thresh-name--upper">Second Class Upper</span>
+          <span class="thresh-range">CGPA 3.50 – 4.49</span>
+        </div>
+        <div class="thresh-item">
+          <span class="thresh-name thresh-name--lower">Second Class Lower</span>
+          <span class="thresh-range">CGPA 2.40 – 3.49</span>
+        </div>
+        <div class="thresh-item">
+          <span class="thresh-name thresh-name--third">Third Class</span>
+          <span class="thresh-range">CGPA 1.50 – 2.39</span>
+        </div>
+        <div class="thresh-item">
+          <span class="thresh-name thresh-name--pass">Pass</span>
+          <span class="thresh-range">CGPA 1.00 – 1.49</span>
+        </div>
+        <div class="thresh-item">
+          <span class="thresh-name thresh-name--fail">Fail</span>
+          <span class="thresh-range">CGPA &lt; 1.00</span>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ════════════ STUDENT TOOLS PAGE ════════════ -->
+  <main id="page-tools" class="page">
+    <div class="tools-tabs">
+      <button class="tools-tab active" data-tool="compare" onclick="switchTool('compare')">Semester Comparison</button>
+      <button class="tools-tab" data-tool="target" onclick="switchTool('target')">Target Planner</button>
+      <button class="tools-tab" data-tool="timetable" onclick="switchTool('timetable')">Timetable Generator</button>
+    </div>
+
+    <!-- SEMESTER COMPARISON -->
+    <div id="tool-compare" class="tool-panel active">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">Performance Comparison</div>
+          <div class="panel-sub">See how each semester or level stacks up, side by side</div>
+        </div>
+        <div class="compare-view-toggle">
+          <button class="compare-view-btn active" data-view="semester" onclick="setCompareView('semester')">By Semester</button>
+          <button class="compare-view-btn" data-view="level" onclick="setCompareView('level')">By Level</button>
+        </div>
+      </div>
+
+      <div id="compare-empty" class="empty-state">
+        <div class="empty-icon">📊</div>
+        <div class="empty-title">No data yet</div>
+        <div class="empty-sub">Add levels and courses on the Calculator page first</div>
+      </div>
+
+      <div id="compare-content" style="display:none;">
+        <div id="compare-summary" class="compare-summary"></div>
+        <div class="chart-card">
+          <canvas id="compareChart" height="90"></canvas>
+        </div>
+        <div class="table-card">
+          <table class="data-table" id="compare-table">
+            <thead>
+              <tr>
+                <th id="compare-col-header">Semester</th>
+                <th>Units</th>
+                <th>Quality Points</th>
+                <th>GPA</th>
+                <th>% vs Previous</th>
+              </tr>
+            </thead>
+            <tbody id="compare-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TARGET CGPA PLANNER -->
+    <div id="tool-target" class="tool-panel">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">Target CGPA Planner</div>
+          <div class="panel-sub">Find out what GPA you need going forward to hit your goal</div>
+        </div>
+      </div>
+
+      <div id="target-empty" class="empty-state">
+        <div class="empty-icon">🎯</div>
+        <div class="empty-title">No data yet</div>
+        <div class="empty-sub">Add levels and courses on the Calculator page first</div>
+      </div>
+
+      <div id="target-content" style="display:none;">
+
+        <!-- Current standing snapshot -->
+        <div class="target-snapshot">
+          <div class="snap-item">
+            <span class="snap-label">Current CGPA</span>
+            <span class="snap-value" id="target-current-cgpa">—</span>
+          </div>
+          <div class="snap-item">
+            <span class="snap-label">Units completed</span>
+            <span class="snap-value" id="target-units-done">0</span>
+          </div>
+          <div class="snap-item">
+            <span class="snap-label">Quality points</span>
+            <span class="snap-value" id="target-qp-done">0</span>
+          </div>
+        </div>
+
+        <!-- Inputs -->
+        <div class="target-form">
+          <div class="target-field">
+            <label for="target-cgpa-input">Target CGPA</label>
+            <input type="number" id="target-cgpa-input" min="0" max="5" step="0.01" value="4.50" placeholder="e.g. 4.50" />
+          </div>
+          <div class="target-field">
+            <label for="target-semesters-left">Semesters remaining</label>
+            <select id="target-semesters-left">
+              <option value="1">1 semester</option>
+              <option value="2" selected>2 semesters (1 level)</option>
+              <option value="3">3 semesters</option>
+              <option value="4">4 semesters (2 levels)</option>
+              <option value="5">5 semesters</option>
+              <option value="6">6 semesters (3 levels)</option>
+              <option value="7">7 semesters</option>
+              <option value="8">8 semesters (4 levels)</option>
+            </select>
+          </div>
+          <div class="target-field">
+            <label for="target-units-per-sem">Expected units / semester</label>
+            <input type="number" id="target-units-per-sem" min="1" max="40" step="1" value="18" />
+          </div>
+          <button class="btn-primary target-calc-btn" onclick="calculateTarget()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            Calculate
+          </button>
+        </div>
+
+        <!-- Result -->
+        <div id="target-result"></div>
+
+        <!-- Quick simulator -->
+        <div class="target-sim">
+          <div class="target-sim-title">Quick simulator — if you maintain this average going forward:</div>
+          <div class="sim-chips" id="target-sim-chips"></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- TIMETABLE GENERATOR -->
+    <div id="tool-timetable" class="tool-panel">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">Timetable Generator</div>
+          <div class="panel-sub">Build your weekly class schedule and export as PDF</div>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <div class="compare-view-toggle">
+            <button class="tt-layout-btn active" data-layout="days-top" onclick="setTTLayout('days-top')">Days across top</button>
+            <button class="tt-layout-btn" data-layout="time-top" onclick="setTTLayout('time-top')">Time across top</button>
+          </div>
+          <button class="btn-primary" onclick="downloadTimetablePDF()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16"/></svg>
+            Download PDF
+          </button>
+        </div>
+      </div>
+
+      <div class="tt-controls">
+        <input type="text" id="tt-title" class="tt-title-input" placeholder="e.g. 200 Level — First Semester Timetable" value="My Class Timetable" />
+        <button class="btn-secondary" id="tt-add-btn" onclick="addTTRow()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+          <span id="tt-add-btn-label">Add time slot</span>
+        </button>
+      </div>
+
+      <div id="timetable-wrap">
+        <table class="timetable-table" id="timetable-table"></table>
+      </div>
+    </div>
+  </main>
+
+  <!-- ════════════ STATISTICS PAGE ════════════ -->
+  <main id="page-stats" class="page">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">CGPA Statistics</div>
+        <div class="panel-sub">Track your GPA performance across levels and semesters</div>
+      </div>
+      <div class="compare-view-toggle">
+        <button class="stats-tf-btn active" data-tf="level" onclick="setStatsTimeframe('level')">By Level</button>
+        <button class="stats-tf-btn" data-tf="semester" onclick="setStatsTimeframe('semester')">By Semester</button>
+      </div>
+    </div>
+
+    <div id="stats-empty" class="empty-state">
+      <div class="empty-icon">📈</div>
+      <div class="empty-title">No data yet</div>
+      <div class="empty-sub">Add levels and courses on the Calculator page to see your trend</div>
+    </div>
+
+    <div id="stats-content" style="display:none;">
+      <div class="hero" style="margin-bottom:1.5rem;">
+        <div class="stat-card">
+          <div class="stat-label">Highest Level GPA</div>
+          <div class="stat-value" id="stat-highest">—</div>
+          <div class="stat-meta" id="stat-highest-level"></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Lowest Level GPA</div>
+          <div class="stat-value" id="stat-lowest">—</div>
+          <div class="stat-meta" id="stat-lowest-level"></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Trend</div>
+          <div class="stat-value" id="stat-trend" style="font-size:1.4rem;">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Levels tracked</div>
+          <div class="stat-value" id="stat-levelcount">0</div>
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-card-title-row">
+          <div class="chart-card-title">GPA Candlestick — <span id="stats-tf-label">By Level</span></div>
+          <div class="candle-legend">
+            <span class="candle-legend-item"><span class="candle-swatch candle-swatch--up"></span> Improved</span>
+            <span class="candle-legend-item"><span class="candle-swatch candle-swatch--down"></span> Declined</span>
+          </div>
+        </div>
+        <canvas id="cgpaByLevelChart" height="110"></canvas>
+        <p class="candle-hint">Each candle spans a period's lowest and highest semester GPA. Body shows opening vs. closing (cumulative) CGPA for that period.</p>
+      </div>
+    </div>
+    
+  </main>
+   <!-- ════════════ LIBRARY PAGE ════════════ -->
+  <main id="page-library" class="page">
+
+    <!-- PIN GATE -->
+    <div id="lib-pin-gate" class="lib-gate">
+      <div class="lib-gate-card">
+        <div class="lib-gate-icon">&#128274;</div>
+        <h2 class="lib-gate-title">Result Library</h2>
+        <p class="lib-gate-sub">Enter your PIN to access the result library</p>
+        <div class="lib-pin-inputs" id="lib-pin-inputs">
+          <input class="lib-pin-digit" type="password" inputmode="numeric" maxlength="1" />
+          <input class="lib-pin-digit" type="password" inputmode="numeric" maxlength="1" />
+          <input class="lib-pin-digit" type="password" inputmode="numeric" maxlength="1" />
+          <input class="lib-pin-digit" type="password" inputmode="numeric" maxlength="1" />
+        </div>
+        <p class="lib-pin-error" id="lib-pin-error"></p>
+        <button class="btn-primary lib-pin-btn" onclick="verifyLibraryPin()">Unlock</button>
+        <button class="btn-secondary-outline" style="margin-top:10px;" onclick="recoverLibraryPin()">Forgot PIN?</button>
+        <p class="lib-gate-hint">Default PIN: <strong>1234</strong> &mdash; change it in settings</p>
+      </div>
+    </div>
+
+    <!-- LIBRARY CONTENT -->
+    <div id="lib-content" style="display:none;">
+
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">Result Library</div>
+          <div class="panel-sub">Upload and view results by level and semester</div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <button class="btn-secondary-outline" onclick="openLibSettings()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            Settings
+          </button>
+          <button class="btn-primary" onclick="openUploadModal()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Upload Result
+          </button>
+        </div>
+      </div>
+
+      <!-- Why keep results ready -->
+      <div class="lib-intro">
+        <div class="lib-intro-title">Always have your result files ready</div>
+        <p>Scholarships, internships, NYSC mobilisation, school clearance and course registration often ask for your result slips with very little notice. Upload them here once, and they're ready the moment you need them.</p>
+        <ul>
+          <li><strong>Sort by level and semester.</strong> Find any result in two taps.</li>
+          <li><strong>Photos are compressed for you.</strong> A clear picture of your result slip works as well as a PDF.</li>
+          <li><strong>Premium saves files to your account.</strong> Lose or change your phone and your results are still there.</li>
+        </ul>
+      </div>
+      <div id="lib-status" class="lib-status"></div>
+
+      <!-- Level tabs -->
+      <div class="lib-level-tabs" id="lib-level-tabs">
+        <button class="lib-tab active" data-level="100" onclick="switchLibLevel(100)">100 Level</button>
+        <button class="lib-tab" data-level="200" onclick="switchLibLevel(200)">200 Level</button>
+        <button class="lib-tab" data-level="300" onclick="switchLibLevel(300)">300 Level</button>
+        <button class="lib-tab" data-level="400" onclick="switchLibLevel(400)">400 Level</button>
+        <button class="lib-tab" data-level="500" onclick="switchLibLevel(500)">500 Level</button>
+        <button class="lib-tab" data-level="Books" onclick="switchLibLevel('Books')">Books</button>
+      </div>
+
+      <!-- Semester tabs -->
+      <div class="lib-sem-tabs">
+        <button class="lib-sem-tab active" data-sem="1" onclick="switchLibSem(1)">Semester 1</button>
+        <button class="lib-sem-tab" data-sem="2" onclick="switchLibSem(2)">Semester 2</button>
+      </div>
+
+      <!-- File grid -->
+      <div id="lib-file-grid" class="lib-file-grid">
+        <div class="lib-empty">
+          <div class="empty-icon">&#128194;</div>
+          <div class="empty-title">No results yet</div>
+          <div class="empty-sub">Upload a result for this semester to see it here</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- UPLOAD MODAL -->
+    <div class="lib-modal-overlay" id="lib-upload-modal" style="display:none;" onclick="closeUploadModal(event)">
+      <div class="lib-modal">
+        <div class="lib-modal-header">
+          <span class="lib-modal-title">Upload Result</span>
+          <button class="btn-icon" onclick="closeUploadModal()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="lib-modal-body">
+          <div class="lib-form-row">
+            <label>Level</label>
+            <select class="select-styled" id="upload-level">
+              <option value="100">100 Level</option>
+              <option value="200">200 Level</option>
+              <option value="300">300 Level</option>
+              <option value="400">400 Level</option>
+              <option value="500">500 Level</option>
+              <option value="Books">Books</option>
+            </select>
+          </div>
+          <div class="lib-form-row">
+            <label>Semester</label>
+            <select class="select-styled" id="upload-sem">
+              <option value="1">Semester 1</option>
+              <option value="2">Semester 2</option>
+            </select>
+          </div>
+          <p class="lib-upload-dest" id="lib-upload-dest"></p>
+          <div class="lib-form-row">
+            <label>Title <span style="color:var(--text3)">(optional)</span></label>
+            <input type="text" class="lib-text-input" id="upload-title" placeholder="e.g. MTH101 Result" />
+          </div>
+          <div class="lib-form-row">
+            <label>File</label>
+            <label class="lib-file-drop" id="lib-file-drop" for="upload-file-input">
+              <input type="file" id="upload-file-input" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp" onchange="handleFileSelect(event)" style="display:none;" />
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <span id="lib-file-label">Tap to choose a file</span>
+              <span class="lib-file-types">Photo (PNG/JPG/WEBP) &middot; PDF &middot; Word. Photos are shrunk automatically. PDF/Word up to 2 MB</span>
+            </label>
+          </div>
+          <div id="lib-upload-progress" style="display:none;">
+            <div class="lib-progress-bar"><div class="lib-progress-fill" id="lib-progress-fill"></div></div>
+            <p class="lib-progress-text" id="lib-progress-text">Uploading&hellip;</p>
+          </div>
+          <p class="lib-upload-error" id="lib-upload-error"></p>
+        </div>
+        <div class="lib-modal-footer">
+          <button class="btn-secondary-outline" onclick="closeUploadModal()">Cancel</button>
+          <button class="btn-primary" id="btn-do-upload" onclick="doUpload()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Upload
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div class="lib-modal-overlay" id="lib-settings-modal" style="display:none;" onclick="closeLibSettings(event)">
+      <div class="lib-modal">
+        <div class="lib-modal-header">
+          <span class="lib-modal-title">Library Settings</span>
+          <button class="btn-icon" onclick="closeLibSettings()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="lib-modal-body">
+          <div class="lib-form-row">
+            <label>Current PIN</label>
+            <input type="password" class="lib-text-input" id="settings-old-pin" inputmode="numeric" maxlength="6" placeholder="Enter current PIN" />
+          </div>
+          <div class="lib-form-row">
+            <label>New PIN <span style="color:var(--text3)">(4&ndash;6 digits)</span></label>
+            <input type="password" class="lib-text-input" id="settings-new-pin" inputmode="numeric" maxlength="6" placeholder="Enter new PIN" />
+          </div>
+          <div class="lib-form-row">
+            <label>Confirm New PIN</label>
+            <input type="password" class="lib-text-input" id="settings-confirm-pin" inputmode="numeric" maxlength="6" placeholder="Repeat new PIN" />
+          </div>
+          <div class="lib-form-row">
+            <label>Recovery question</label>
+            <input type="text" class="lib-text-input" id="settings-recovery-answer" placeholder="What is your best course?" />
+          </div>
+          <p class="lib-upload-error" id="lib-settings-error"></p>
+          <p class="lib-settings-success" id="lib-settings-success"></p>
+        </div>
+        <div class="lib-modal-footer">
+          <button class="btn-secondary-outline" onclick="closeLibSettings()">Cancel</button>
+          <button class="btn-primary" onclick="changeLibraryPin()">Save PIN</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- FILE PREVIEW MODAL -->
+    <div class="lib-modal-overlay lib-preview-overlay" id="lib-preview-modal" style="display:none;" onclick="closePreview(event)">
+      <div class="lib-preview-modal">
+        <div class="lib-modal-header">
+          <span class="lib-modal-title" id="preview-title">Preview</span>
+          <div style="display:flex;gap:8px;">
+            <a class="btn-primary" id="preview-download-btn" download>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16"/></svg>
+              Download
+            </a>
+            <button class="btn-icon" onclick="closePreview()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="lib-preview-body" id="lib-preview-body"></div>
+      </div>
+    </div>
+
+  </main>
+
+    </div> <!-- /.content -->
+  </div> <!-- /.app-layout -->
+
+  <footer>
+   Built for Nigerian university student. 5.0 grading scale<br>
+    Track your academic progress with confidence<br>
+    Developed by Viktorous Tech Limited
+  </footer>
+
+
+  <!-- SIGN-IN GATE -->
+  <div id="auth-gate" class="auth-gate" data-state="loading">
+    <div class="auth-card">
+      <div class="auth-logo"><img src="image/cgpa_logo_clean.png" alt="" /></div>
+      <h1 class="auth-title">Grade Pilot</h1>
+      <p class="auth-sub">Sign in with Google to keep your levels, courses and grades saved. They'll be waiting on any phone you sign in on.</p>
+      <div class="auth-loading"><span class="auth-spinner"></span> Getting things ready…</div>
+      <button id="gate-google-btn" class="auth-google" onclick="startSignIn()">
+        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Continue with Google
+      </button>
+      <button class="auth-retry" onclick="location.reload()">Retry</button>
+      <p class="auth-msg" id="auth-gate-msg"></p>
+      <p class="auth-fine">We save your name and email to run your account. Nothing is posted anywhere.</p>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/calculator.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/nav.js"></script>
+  <script src="js/timetable.js"></script>
+  <script src="js/compare.js"></script>
+  <script src="js/stats.js"></script>
+  <script src="js/target.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/account.js"></script>
+  <script src="js/library.js"></script>
+  <!-- Firebase (sign-in + database) -->
+  <script type="module" src="js/cloud.js"></script>
+
+</body>
+</html>
