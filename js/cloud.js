@@ -29,15 +29,18 @@ const auth = initializeAuth(app, {
 
 // Offline cache + long-polling (the streaming connection is blocked or unstable on many
 // mobile networks, which showed up as "unavailable").
+// This project's database is named "default" (Firestore Enterprise edition), NOT "(default)".
+// If you ever recreate it as a standard database, change this to '(default)'.
+const DATABASE_ID = 'default';
 let db;
 try {
   db = initializeFirestore(app, {
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
     experimentalForceLongPolling: true
-  });
+  }, DATABASE_ID);
 } catch (e) {
   console.warn('Offline cache unavailable, using normal mode', e);
-  db = getFirestore(app);
+  db = getFirestore(app, DATABASE_ID);
 }
 
 const provider = new GoogleAuthProvider();

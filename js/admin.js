@@ -24,13 +24,15 @@ const auth = initializeAuth(app, {
   persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
   popupRedirectResolver: browserPopupRedirectResolver
 });
+// This project's database is named "default" (Firestore Enterprise edition), NOT "(default)".
+const DATABASE_ID = 'default';
 let db;
 try {
   db = initializeFirestore(app, {
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
     experimentalForceLongPolling: true
-  });
-} catch (e) { db = getFirestore(app); }
+  }, DATABASE_ID);
+} catch (e) { db = getFirestore(app, DATABASE_ID); }
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -189,7 +191,11 @@ async function grantByEmail(email) {
   const p = people.find(x => x.email === email);
   const base = Math.max(Date.now(), ms(p && p.premiumUntil));
   const until = Timestamp.fromMillis(base + CFG.PREMIUM_DAYS * 864e5);
-  await setDoc(doc(db, 'grants', email), { email, premiumUntil: until, grantedAt: serverTimestamp(), grantedBy: auth.currentUser.email }, { merge: true });
+  log(`saving ${email}…`);
+  const write = setDoc(doc(db, 'grants', email), { email, premiumUntil: until, grantedAt: serverTimestamp(), grantedBy: auth.currentUser.email }, { merge: true });
+  const result = await Promise.race([write.then(() => 'ok'), new Promise(r => setTimeout(() => r('slow'), 15000))]);
+  if (result === 'slow') log(`NOT CONFIRMED yet for ${email}. It will send when your connection allows. Tap refresh later to check.`);
+  else log(`confirmed by the database: ${email}`);
   return until;
 }
 async function act(kind, email, btn) {
