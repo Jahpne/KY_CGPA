@@ -1,11 +1,14 @@
 // ════════════════════════════════════════════════════════
 //  CLOUD  —  js/cloud.js   (Firebase: Google sign-in + Firestore only)
 //  Exposes window.Cloud for the other scripts.
+//  Sign-in uses the pop-up only. (The old full-page redirect fallback fails on
+//  many phones and in WhatsApp/TikTok browsers, which caused the sign-in loop.)
 // ════════════════════════════════════════════════════════
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
-  getRedirectResult, onAuthStateChanged, signOut as fbSignOut
+  initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence,
+  browserPopupRedirectResolver, GoogleAuthProvider, signInWithPopup,
+  onAuthStateChanged, signOut as fbSignOut
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc,
@@ -14,7 +17,10 @@ import {
 
 const cfg = window.APP_CONFIG;
 const app = initializeApp(cfg.FIREBASE);
-const auth = getAuth(app);
+const auth = initializeAuth(app, {
+  persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
+  popupRedirectResolver: browserPopupRedirectResolver
+});
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: 'select_account' });
@@ -23,6 +29,7 @@ const state = { user: null, profile: null, error: null };
 const CHUNK_CHARS = 700000;           // Firestore docs max ~1 MiB, so files are split
 const chunkId = i => String(i).padStart(3, '0');
 const uid = () => { if (!auth.currentUser) throw new Error('Not signed in'); return auth.currentUser.uid; };
+const wait = ms => new Promise(r => setTimeout(r, ms));
 
 function emit() {
   if (typeof window.onAuthState === 'function') {
@@ -48,25 +55,39 @@ async function ensureProfile(user) {
   return snap.data();
 }
 
+// Try a few times (bad network); stop straight away if the rules refuse.
+async function ensureProfileWithRetry(user) {
+  let last;
+  for (let i = 0; i < 3; i++) {
+    try { return await ensureProfile(user); }
+    catch (e) {
+      last = e;
+      if (e && e.code === 'permission-denied') break;
+      await wait(700 * (i + 1));
+    }
+  }
+  throw last;
+}
+
 onAuthStateChanged(auth, async user => {
   state.user = user; state.error = null;
   if (!user) { state.profile = null; emit(); return; }
-  try { state.profile = await ensureProfile(user); }
+  try { state.profile = await ensureProfileWithRetry(user); }
   catch (e) { console.error('Profile error:', e); state.profile = null; state.error = e; }
   emit();
 });
-getRedirectResult(auth).catch(() => {});
 
-async function signIn() {
-  try { await signInWithPopup(auth, provider); }
-  catch (e) {
-    if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') {
-      await signInWithRedirect(auth, provider); return;
-    }
-    if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') return;
-    throw e;
-  }
+async function retryProfile() {
+  if (!auth.currentUser) return;
+  state.error = null;
+  try { state.profile = await ensureProfileWithRetry(auth.currentUser); }
+  catch (e) { console.error('Profile error:', e); state.error = e; }
+  emit();
+  return !state.error;
 }
+
+// Pop-up only. Errors are thrown so account.js can explain them to the person.
+async function signIn() { await signInWithPopup(auth, provider); }
 const signOut = () => fbSignOut(auth);
 
 async function refreshProfile() {
@@ -75,6 +96,12 @@ async function refreshProfile() {
   state.profile = snap.exists() ? snap.data() : null;
   emit();
   return state.profile;
+}
+
+async function savePhoto(dataUrl) {
+  await updateDoc(doc(db, 'users', uid()), { customPhoto: dataUrl });
+  if (state.profile) state.profile.customPhoto = dataUrl;
+  emit();
 }
 
 // ── Course backup ──
@@ -134,7 +161,7 @@ async function claimPayment() {
 }
 
 window.Cloud = {
-  signIn, signOut, refreshProfile, loadLevels, saveLevels,
+  signIn, signOut, refreshProfile, retryProfile, savePhoto, loadLevels, saveLevels,
   listFiles, putFile, getFileB64, deleteFile, claimPayment,
   getState: () => ({ ...state })
 };

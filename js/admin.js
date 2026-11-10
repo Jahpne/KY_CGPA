@@ -5,18 +5,22 @@
 // ════════════════════════════════════════════════════════
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
+  initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence,
+  browserPopupRedirectResolver, GoogleAuthProvider, signInWithPopup,
   onAuthStateChanged, signOut
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
-  getFirestore, collection, getDocs, doc, updateDoc, deleteDoc,
+  getFirestore, collection, getDocs, doc, updateDoc, setDoc, deleteDoc,
   Timestamp, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import './config.js';
 
 const CFG = window.APP_CONFIG;
 const app = initializeApp(CFG.FIREBASE);
-const auth = getAuth(app);
+const auth = initializeAuth(app, {
+  persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
+  popupRedirectResolver: browserPopupRedirectResolver
+});
 const db = getFirestore(app);
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -65,8 +69,8 @@ $('btn-login').onclick = async () => {
   $('login-msg').textContent = '';
   try { await signInWithPopup(auth, provider); }
   catch (e) {
-    if (e.code === 'auth/popup-blocked') return signInWithRedirect(auth, provider);
-    if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request')
+    if (e.code === 'auth/popup-blocked') $('login-msg').textContent = '> pop-up blocked. allow pop-ups for this site (or open in Chrome) and try again.';
+    else if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request')
       $('login-msg').textContent = '> error: ' + (e.code || e.message);
   }
 };
@@ -105,6 +109,12 @@ async function load() {
     const [us, cs] = await Promise.all([getDocs(collection(db, 'users')), getDocs(collection(db, 'claims'))]);
     users = us.docs.map(d => ({ uid: d.id, ...d.data() }));
     claims = {}; cs.docs.forEach(d => (claims[d.id] = d.data()));
+    // someone who tapped "I've paid" but has no profile record still shows up here
+    Object.keys(claims).forEach(id => {
+      if (!users.find(u => u.uid === id)) {
+        users.push({ uid: id, email: claims[id].email, name: claims[id].name, createdAt: claims[id].createdAt, lastLogin: claims[id].createdAt, premiumUntil: null, _orphan: true });
+      }
+    });
     users.sort((a, b) => (claims[b.uid] ? 1 : 0) - (claims[a.uid] ? 1 : 0) || ms(b.lastLogin) - ms(a.lastLogin));
     log(`loaded ${users.length} user(s), ${Object.keys(claims).length} payment notice(s)`);
     render();
@@ -146,18 +156,19 @@ function render() {
   if (!list.length) { $('rows').innerHTML = '<div class="empty">&gt; no matches</div>'; return; }
   $('rows').innerHTML = list.map(u => {
     const st = statusOf(u), c = claims[u.uid];
+    const noRec = u._orphan ? `<span class="tag claim">no profile record yet</span>` : '';
     const tag = st === 'premium' ? `<span class="tag prem">premium · until ${fmt(u.premiumUntil)}</span>`
       : st === 'expired' ? `<span class="tag exp">expired ${fmt(u.premiumUntil)}</span>` : `<span class="tag">free</span>`;
     return `
     <div class="row ${c ? 'claim' : ''}">
       <div class="top">
         <div><div class="mail">${esc(u.email)}</div><div class="nm">${esc(u.name || '')}</div></div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">${c ? `<span class="tag claim">paid? · ${fmt(c.createdAt)}</span>` : ''}${tag}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${noRec}${c ? `<span class="tag claim">paid? · ${fmt(c.createdAt)}</span>` : ''}${tag}</div>
       </div>
       <div class="meta"><span>joined ${fmt(u.createdAt)}</span><span>last seen ${ago(u.lastLogin)}</span></div>
       <div class="acts">
         <button class="btn" data-a="grant" data-u="${esc(u.uid)}">+1 year</button>
-        <button class="btn bad" data-a="revoke" data-u="${esc(u.uid)}" ${st === 'free' ? 'disabled' : ''}>revoke</button>
+        <button class="btn bad" data-a="revoke" data-u="${esc(u.uid)}" ${st === 'free' || u._orphan ? 'disabled' : ''}>revoke</button>
         ${c ? `<button class="btn dim" data-a="dismiss" data-u="${esc(u.uid)}">dismiss notice</button>` : ''}
         <a class="btn dim" style="text-decoration:none" href="mailto:${esc(u.email)}">email</a>
       </div>
@@ -174,7 +185,14 @@ async function act(kind, uid, btn) {
       if (!confirm(`Give ${u.email} premium for ${CFG.PREMIUM_DAYS} days?`)) { btn.disabled = false; return; }
       const base = Math.max(Date.now(), ms(u.premiumUntil));
       const until = Timestamp.fromMillis(base + CFG.PREMIUM_DAYS * 864e5);
-      await updateDoc(doc(db, 'users', uid), { plan: 'premium', premiumUntil: until, grantedAt: serverTimestamp(), grantedBy: auth.currentUser.email });
+      const grant = { plan: 'premium', premiumUntil: until, grantedAt: serverTimestamp(), grantedBy: auth.currentUser.email };
+      if (u._orphan) {
+        // create the missing profile record for this person, with premium already on
+        await setDoc(doc(db, 'users', uid), { email: u.email, name: u.name || '', photo: '', createdAt: serverTimestamp(), lastLogin: serverTimestamp(), ...grant });
+        u._orphan = false;
+      } else {
+        await updateDoc(doc(db, 'users', uid), grant);
+      }
       if (claims[uid]) { await deleteDoc(doc(db, 'claims', uid)); delete claims[uid]; }
       u.plan = 'premium'; u.premiumUntil = until;
       log(`granted ${u.email} until ${fmt(until)}`);
