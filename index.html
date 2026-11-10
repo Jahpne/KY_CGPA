@@ -653,6 +653,13 @@
       </button>
       <button class="auth-retry" onclick="location.reload()">Retry</button>
       <p class="auth-msg" id="auth-gate-msg"></p>
+      <div class="auth-inapp" id="auth-inapp" style="display:none;">
+        <strong>Open this page in Chrome to sign in.</strong>
+        <span>Google doesn't allow sign-in inside the browser built into WhatsApp, TikTok or Facebook.</span>
+        <a class="auth-inapp-btn" id="auth-inapp-open" href="#">Open in Chrome</a>
+        <button class="auth-inapp-btn auth-inapp-btn--ghost" onclick="copyPageLink(this)">Copy link</button>
+      </div>
+      <button class="auth-skip" id="gate-skip" onclick="continueAsGuest()">Continue without signing in</button>
       <p class="auth-fine">We save your name and email to run your account. Nothing is posted anywhere.</p>
     </div>
   </div>
