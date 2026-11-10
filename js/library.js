@@ -23,6 +23,7 @@ let pinInputsReady  = false;
 let localFiles  = [];            // {id, level, semester, title, fileName, mimeType, size, uploadedAt, blob, thumb?}
 let cloudFiles  = [];            // metadata from Firestore
 let cloudLoaded = false;
+let cloudOffline = false;
 let previewUrl  = null;
 let thumbUrls   = [];
 
@@ -353,10 +354,10 @@ async function loadLibFiles(force) {
   const mode = libMode();
   if (Account.user && (mode === 'premium' || mode === 'expired')) {
     if (force || !cloudLoaded) {
-      try { cloudFiles = await Cloud.listFiles(); cloudLoaded = true; }
-      catch (e) { console.error(e); cloudFiles = []; showToast('Could not load your account files.'); }
+      try { cloudFiles = await Cloud.listFiles(); cloudLoaded = true; cloudOffline = false; }
+      catch (e) { console.error(e); cloudFiles = []; cloudOffline = true; }   // weak network: shown quietly below
     }
-  } else { cloudFiles = []; cloudLoaded = false; }
+  } else { cloudFiles = []; cloudLoaded = false; cloudOffline = false; }
 
   renderLibStatus();
   renderFileGrid();
@@ -373,7 +374,7 @@ function renderLibStatus() {
     const move = localFiles.length
       ? `<button class="btn-secondary-outline lib-status-btn" onclick="migrateLocalToCloud(this)">Move ${localFiles.length} file${localFiles.length > 1 ? 's' : ''} from this phone to my account</button>` : '';
     el.className = 'lib-status lib-status--premium';
-    el.innerHTML = `<div><strong>Premium</strong> until ${fmtDate(Account.premiumUntil)}<span>${cloudFiles.length} file${cloudFiles.length === 1 ? '' : 's'} saved in your account · up to ${LIBCFG.PREMIUM_MAX_PER_SEMESTER} per semester</span></div>${move}`;
+    el.innerHTML = `<div><strong>Premium</strong> until ${fmtDate(Account.premiumUntil)}<span>${cloudOffline ? 'Your account files will appear when your connection is better.' : cloudFiles.length + ' file' + (cloudFiles.length === 1 ? '' : 's') + ' saved in your account · up to ' + LIBCFG.PREMIUM_MAX_PER_SEMESTER + ' per semester'}</span></div>${move}`;
   } else if (mode === 'expired') {
     el.className = 'lib-status lib-status--expired';
     el.innerHTML = `<div><strong>Premium ended</strong> on ${fmtDate(Account.premiumUntil)}<span>Your files are safe. You can open and download them, but new uploads are paused.</span></div>${upgrade('Renew')}`;
@@ -511,6 +512,10 @@ async function doUpload() {
     }
   }
 
+  if (mode === 'premium' && navigator.onLine === false) {
+    errEl.textContent = "You're offline right now. Your file is still selected. Tap Save again when you're back online.";
+    return;
+  }
   const btn = document.getElementById('btn-do-upload');
   btn.disabled = true;
   try {
@@ -540,9 +545,10 @@ async function doUpload() {
   } catch (err) {
     console.error(err);
     const denied = err && (err.code === 'permission-denied');
+    const mine = err && !err.code;   // our own friendly messages (file type, size…)
     errEl.textContent = denied
-      ? 'Your premium may have ended or not been activated yet. Open Your account → Refresh my status.'
-      : (err.message || 'Upload failed. Try again.');
+      ? 'Premium is not active on this account yet. Open Your account and tap Refresh my status.'
+      : (mine ? err.message : 'Not finished yet. Please tap Save again.');
     document.getElementById('lib-upload-progress').style.display = 'none';
     btn.disabled = false;
   }
@@ -577,7 +583,7 @@ async function deleteLibFile(e, src, id) {
       if (item) await Cloud.deleteFile(item);
     }
     await loadLibFiles(src === 'cloud');
-  } catch (err) { alert('Delete failed: ' + err.message); }
+  } catch (err) { console.warn(err); showToast('Could not delete right now. Please try again in a moment.'); }
 }
 
 // ─── preview / download ───
@@ -615,7 +621,7 @@ function openPreview(src, id) {
         </div>`;
     } catch (err) {
       console.error(err);
-      body.innerHTML = '<div class="lib-loading">Could not open this file. Check your internet and try again.</div>';
+      body.innerHTML = '<div class="lib-loading">This file will open once your connection is better.</div>';
     }
   });
 }

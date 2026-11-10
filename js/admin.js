@@ -1,7 +1,10 @@
 // ════════════════════════════════════════════════════════
 //  ADMIN PANEL  —  js/admin.js   (open at /admin)
-//  Only the ADMIN_EMAIL Google account can read the user list.
-//  This is enforced by firestore.rules, not just by this page.
+//  • Lists everyone who signed in (name + email), who tapped "I've paid",
+//    and who has premium.
+//  • "Give access by email" works for ANY email, even if that person's own
+//    record never reached the database.
+//  Only the ADMIN_EMAIL Google account can read this (enforced by firestore.rules).
 // ════════════════════════════════════════════════════════
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {
@@ -10,8 +13,8 @@ import {
   onAuthStateChanged, signOut
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
-  getFirestore, collection, getDocs, doc, updateDoc, setDoc, deleteDoc,
-  Timestamp, serverTimestamp
+  initializeFirestore, persistentLocalCache, persistentMultipleTabManager, getFirestore,
+  collection, getDocs, doc, setDoc, deleteDoc, Timestamp, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import './config.js';
 
@@ -21,13 +24,20 @@ const auth = initializeAuth(app, {
   persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
   popupRedirectResolver: browserPopupRedirectResolver
 });
-const db = getFirestore(app);
+let db;
+try {
+  db = initializeFirestore(app, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    experimentalForceLongPolling: true
+  });
+} catch (e) { db = getFirestore(app); }
+
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-let users = [], claims = {}, filter = 'all', query = '';
+let people = [], filter = 'all', query = '';
 
-// ── boot lines (one typed moment, skipped if reduced motion) ──
+// ── boot lines ──
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 function typeBoot(lines) {
   const el = $('boot');
@@ -37,13 +47,16 @@ function typeBoot(lines) {
     (function next() {
       if (i >= lines.length) { el.classList.remove('cursor'); resolve(); return; }
       el.innerHTML += (i ? '\n' : '') + lines[i++];
-      setTimeout(next, 260);
+      setTimeout(next, 180);
     })();
   });
 }
 
 const ms = t => (t && t.toMillis ? t.toMillis() : 0);
-const fmt = t => (t ? new Date(typeof t === 'number' ? t : ms(t)).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
+const fmt = t => {
+  const m = typeof t === 'number' ? t : ms(t);
+  return m ? new Date(m).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+};
 function ago(t) {
   const m = ms(t); if (!m) return '—';
   const d = Math.floor((Date.now() - m) / 60000);
@@ -51,15 +64,14 @@ function ago(t) {
   if (d < 1440) return Math.floor(d / 60) + 'h ago';
   return Math.floor(d / 1440) + 'd ago';
 }
-function statusOf(u) {
-  if (!u.premiumUntil) return 'free';
-  return ms(u.premiumUntil) > Date.now() ? 'premium' : 'expired';
+function statusOf(p) {
+  if (!p.premiumUntil) return 'free';
+  return ms(p.premiumUntil) > Date.now() ? 'premium' : 'expired';
 }
 function log(msg) {
-  const l = $('log');
   const d = document.createElement('div');
   d.innerHTML = `[${new Date().toLocaleTimeString()}] <b>&gt;</b> ${esc(msg)}`;
-  l.prepend(d);
+  $('log').prepend(d);
 }
 
 // ── auth ──
@@ -77,18 +89,15 @@ $('btn-login').onclick = async () => {
 $('btn-out').onclick = $('btn-denied-out').onclick = () => signOut(auth);
 $('btn-refresh').onclick = () => load();
 
+let bootDone = false, authState = undefined;
 typeBoot([
   '<b>&gt;</b> booting grade-pilot admin…',
   '<b>&gt;</b> linking to project <b>' + esc(CFG.FIREBASE.projectId) + '</b>',
   '<b>&gt;</b> awaiting credentials'
 ]).then(() => { bootDone = true; maybeShow(); });
-
-let bootDone = false, authState = undefined;
 onAuthStateChanged(auth, user => { authState = user || null; maybeShow(); });
 
-function show(which) {
-  ['login', 'denied', 'panel'].forEach(id => $(id).classList.toggle('hide', id !== which));
-}
+function show(which) { ['login', 'denied', 'panel'].forEach(id => $(id).classList.toggle('hide', id !== which)); }
 function maybeShow() {
   if (!bootDone || authState === undefined) return;
   const user = authState;
@@ -102,48 +111,47 @@ function maybeShow() {
   load();
 }
 
-// ── data ──
+// ── data: signups + grants + claims (+ old records from the first version) ──
 async function load() {
-  $('rows').innerHTML = '<div class="empty cursor">&gt; fetching users</div>';
-  try {
-    const [us, cs] = await Promise.all([getDocs(collection(db, 'users')), getDocs(collection(db, 'claims'))]);
-    users = us.docs.map(d => ({ uid: d.id, ...d.data() }));
-    claims = {}; cs.docs.forEach(d => (claims[d.id] = d.data()));
-    // someone who tapped "I've paid" but has no profile record still shows up here
-    Object.keys(claims).forEach(id => {
-      if (!users.find(u => u.uid === id)) {
-        users.push({ uid: id, email: claims[id].email, name: claims[id].name, createdAt: claims[id].createdAt, lastLogin: claims[id].createdAt, premiumUntil: null, _orphan: true });
-      }
-    });
-    users.sort((a, b) => (claims[b.uid] ? 1 : 0) - (claims[a.uid] ? 1 : 0) || ms(b.lastLogin) - ms(a.lastLogin));
-    log(`loaded ${users.length} user(s), ${Object.keys(claims).length} payment notice(s)`);
-    render();
-  } catch (e) {
-    console.error(e);
-    $('rows').innerHTML = `<div class="empty" style="color:var(--bad)">&gt; read failed: ${esc(e.code || e.message)}<br>&gt; did you publish firestore.rules? (see SETUP.md)</div>`;
-  }
+  $('rows').innerHTML = '<div class="empty cursor">&gt; fetching</div>';
+  const names = ['signups', 'grants', 'claims', 'users'];
+  const results = await Promise.allSettled(names.map(n => getDocs(collection(db, n))));
+  const got = {}; const failed = [];
+  results.forEach((r, i) => { if (r.status === 'fulfilled') got[names[i]] = r.value.docs; else { got[names[i]] = []; failed.push(names[i] + ':' + (r.reason && r.reason.code || 'error')); } });
+
+  const map = new Map();
+  const get = e => { e = String(e || '').toLowerCase(); if (!e) return null; if (!map.has(e)) map.set(e, { email: e }); return map.get(e); };
+
+  got.users.forEach(d => { const x = d.data(); const r = get(x.email); if (!r) return; r.name = r.name || x.name; r.joined = r.joined || x.createdAt; r.lastLogin = r.lastLogin || x.lastLogin; });
+  got.signups.forEach(d => { const x = d.data(); const r = get(x.email); if (!r) return; r.name = x.name || r.name; r.joined = x.joined || r.joined; r.lastLogin = x.lastLogin || r.lastLogin; r.uid = d.id; });
+  got.grants.forEach(d => { const x = d.data(); const r = get(d.id); if (r) r.premiumUntil = x.premiumUntil; });
+  got.claims.forEach(d => { const x = d.data(); const r = get(x.email); if (r) { r.claim = { ...x, _id: d.id }; r.name = r.name || x.name; } });
+
+  people = [...map.values()];
+  people.sort((a, b) => (b.claim ? 1 : 0) - (a.claim ? 1 : 0) || ms(b.lastLogin) - ms(a.lastLogin) || ms(b.joined) - ms(a.joined));
+  log(`loaded ${people.length} people` + (failed.length ? ' · could not read: ' + failed.join(', ') + ' (publish firestore.rules?)' : ''));
+  render();
 }
 
 function visible() {
   const q = query.trim().toLowerCase();
-  return users.filter(u => {
-    const st = statusOf(u);
+  return people.filter(p => {
+    const st = statusOf(p);
     if (filter === 'premium' && st !== 'premium') return false;
     if (filter === 'expired' && st !== 'expired') return false;
     if (filter === 'free' && st !== 'free') return false;
-    if (filter === 'claims' && !claims[u.uid]) return false;
+    if (filter === 'claims' && !p.claim) return false;
     if (!q) return true;
-    return (u.email || '').toLowerCase().includes(q) || (u.name || '').toLowerCase().includes(q);
+    return p.email.includes(q) || (p.name || '').toLowerCase().includes(q);
   });
 }
 
 function render() {
-  const total = users.length;
-  const prem = users.filter(u => statusOf(u) === 'premium').length;
-  const pend = Object.keys(claims).length;
-  const week = users.filter(u => Date.now() - ms(u.createdAt) < 7 * 864e5).length;
+  const prem = people.filter(p => statusOf(p) === 'premium').length;
+  const pend = people.filter(p => p.claim).length;
+  const week = people.filter(p => Date.now() - ms(p.joined) < 7 * 864e5).length;
   $('stats').innerHTML = `
-    <div class="stat"><div class="n">${total}</div><div class="l">users</div></div>
+    <div class="stat"><div class="n">${people.length}</div><div class="l">people</div></div>
     <div class="stat"><div class="n">${prem}</div><div class="l">premium now</div></div>
     <div class="stat ${pend ? 'alert' : ''}"><div class="n">${pend}</div><div class="l">paid, waiting</div></div>
     <div class="stat"><div class="n">${week}</div><div class="l">joined 7 days</div></div>`;
@@ -154,67 +162,81 @@ function render() {
 
   const list = visible();
   if (!list.length) { $('rows').innerHTML = '<div class="empty">&gt; no matches</div>'; return; }
-  $('rows').innerHTML = list.map(u => {
-    const st = statusOf(u), c = claims[u.uid];
-    const noRec = u._orphan ? `<span class="tag claim">no profile record yet</span>` : '';
-    const tag = st === 'premium' ? `<span class="tag prem">premium · until ${fmt(u.premiumUntil)}</span>`
-      : st === 'expired' ? `<span class="tag exp">expired ${fmt(u.premiumUntil)}</span>` : `<span class="tag">free</span>`;
+  $('rows').innerHTML = list.map(p => {
+    const st = statusOf(p);
+    const tag = st === 'premium' ? `<span class="tag prem">premium · until ${fmt(p.premiumUntil)}</span>`
+      : st === 'expired' ? `<span class="tag exp">expired ${fmt(p.premiumUntil)}</span>` : `<span class="tag">free</span>`;
     return `
-    <div class="row ${c ? 'claim' : ''}">
+    <div class="row ${p.claim ? 'claim' : ''}">
       <div class="top">
-        <div><div class="mail">${esc(u.email)}</div><div class="nm">${esc(u.name || '')}</div></div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">${noRec}${c ? `<span class="tag claim">paid? · ${fmt(c.createdAt)}</span>` : ''}${tag}</div>
+        <div><div class="mail">${esc(p.email)}</div><div class="nm">${esc(p.name || '')}</div></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${p.claim ? `<span class="tag claim">paid? · ${fmt(p.claim.createdAt)}</span>` : ''}${tag}</div>
       </div>
-      <div class="meta"><span>joined ${fmt(u.createdAt)}</span><span>last seen ${ago(u.lastLogin)}</span></div>
+      <div class="meta"><span>joined ${fmt(p.joined)}</span><span>last seen ${ago(p.lastLogin)}</span></div>
       <div class="acts">
-        <button class="btn" data-a="grant" data-u="${esc(u.uid)}">+1 year</button>
-        <button class="btn bad" data-a="revoke" data-u="${esc(u.uid)}" ${st === 'free' || u._orphan ? 'disabled' : ''}>revoke</button>
-        ${c ? `<button class="btn dim" data-a="dismiss" data-u="${esc(u.uid)}">dismiss notice</button>` : ''}
-        <a class="btn dim" style="text-decoration:none" href="mailto:${esc(u.email)}">email</a>
+        <button class="btn" data-a="grant" data-e="${esc(p.email)}">+1 year</button>
+        <button class="btn bad" data-a="revoke" data-e="${esc(p.email)}" ${st === 'free' ? 'disabled' : ''}>revoke</button>
+        ${p.claim ? `<button class="btn dim" data-a="dismiss" data-e="${esc(p.email)}">dismiss notice</button>` : ''}
+        <a class="btn dim" style="text-decoration:none" href="mailto:${esc(p.email)}">email</a>
       </div>
     </div>`;
   }).join('');
-  $('rows').querySelectorAll('button[data-a]').forEach(b => (b.onclick = () => act(b.dataset.a, b.dataset.u, b)));
+  $('rows').querySelectorAll('button[data-a]').forEach(b => (b.onclick = () => act(b.dataset.a, b.dataset.e, b)));
 }
 
-async function act(kind, uid, btn) {
-  const u = users.find(x => x.uid === uid); if (!u) return;
+// ── actions (all keyed by email) ──
+async function grantByEmail(email) {
+  const p = people.find(x => x.email === email);
+  const base = Math.max(Date.now(), ms(p && p.premiumUntil));
+  const until = Timestamp.fromMillis(base + CFG.PREMIUM_DAYS * 864e5);
+  await setDoc(doc(db, 'grants', email), { email, premiumUntil: until, grantedAt: serverTimestamp(), grantedBy: auth.currentUser.email }, { merge: true });
+  return until;
+}
+async function act(kind, email, btn) {
+  const p = people.find(x => x.email === email); if (!p) return;
   try {
     btn.disabled = true;
     if (kind === 'grant') {
-      if (!confirm(`Give ${u.email} premium for ${CFG.PREMIUM_DAYS} days?`)) { btn.disabled = false; return; }
-      const base = Math.max(Date.now(), ms(u.premiumUntil));
-      const until = Timestamp.fromMillis(base + CFG.PREMIUM_DAYS * 864e5);
-      const grant = { plan: 'premium', premiumUntil: until, grantedAt: serverTimestamp(), grantedBy: auth.currentUser.email };
-      if (u._orphan) {
-        // create the missing profile record for this person, with premium already on
-        await setDoc(doc(db, 'users', uid), { email: u.email, name: u.name || '', photo: '', createdAt: serverTimestamp(), lastLogin: serverTimestamp(), ...grant });
-        u._orphan = false;
-      } else {
-        await updateDoc(doc(db, 'users', uid), grant);
-      }
-      if (claims[uid]) { await deleteDoc(doc(db, 'claims', uid)); delete claims[uid]; }
-      u.plan = 'premium'; u.premiumUntil = until;
-      log(`granted ${u.email} until ${fmt(until)}`);
+      if (!confirm(`Give ${email} premium for ${CFG.PREMIUM_DAYS} days?`)) { btn.disabled = false; return; }
+      p.premiumUntil = await grantByEmail(email);
+      if (p.claim && p.claim._id) { try { await deleteDoc(doc(db, 'claims', p.claim._id)); p.claim = null; } catch (e) {} }
+      log(`granted ${email} until ${fmt(p.premiumUntil)}`);
     } else if (kind === 'revoke') {
-      if (!confirm(`Remove premium from ${u.email}? Their saved files stay but they go back to the free plan.`)) { btn.disabled = false; return; }
-      await updateDoc(doc(db, 'users', uid), { plan: 'free', premiumUntil: null });
-      u.plan = 'free'; u.premiumUntil = null;
-      log(`revoked ${u.email}`);
+      if (!confirm(`Remove premium from ${email}? Their saved files stay; uploads pause.`)) { btn.disabled = false; return; }
+      await deleteDoc(doc(db, 'grants', email));
+      p.premiumUntil = null;
+      log(`revoked ${email}`);
     } else if (kind === 'dismiss') {
-      await deleteDoc(doc(db, 'claims', uid)); delete claims[uid];
-      log(`dismissed notice for ${u.email}`);
+      const id = p.claim && p.claim._id;
+      if (id) await deleteDoc(doc(db, 'claims', id));
+      p.claim = null;
+      log(`dismissed notice for ${email}`);
     }
     render();
   } catch (e) {
     console.error(e); btn.disabled = false;
     log('FAILED: ' + (e.code || e.message));
-    alert('Action failed: ' + (e.code || e.message));
+    alert('That did not go through: ' + (e.code || e.message));
   }
 }
 
+// give access to any email, even one that is not in the list yet
+$('btn-addgrant').onclick = async () => {
+  const email = $('grant-email').value.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { alert('Type a full email address.'); return; }
+  if (!confirm(`Give ${email} premium for ${CFG.PREMIUM_DAYS} days?`)) return;
+  try {
+    const until = await grantByEmail(email);
+    if (!people.find(x => x.email === email)) people.unshift({ email, premiumUntil: until });
+    else people.find(x => x.email === email).premiumUntil = until;
+    $('grant-email').value = '';
+    log(`granted ${email} until ${fmt(until)}`);
+    render();
+  } catch (e) { log('FAILED: ' + (e.code || e.message)); alert('That did not go through: ' + (e.code || e.message)); }
+};
+
 // ── tools ──
-const emails = () => visible().map(u => u.email).filter(Boolean);
+const emails = () => visible().map(p => p.email);
 $('q').oninput = e => { query = e.target.value; render(); };
 $('btn-copy').onclick = async () => {
   const list = emails().join(', ');
@@ -222,8 +244,7 @@ $('btn-copy').onclick = async () => {
   catch { prompt('Copy these emails:', list); }
 };
 $('btn-mail').onclick = () => {
-  const list = emails();
-  if (!list.length) return;
+  const list = emails(); if (!list.length) return;
   const url = 'mailto:?bcc=' + encodeURIComponent(list.join(',')) + '&subject=' + encodeURIComponent('Grade Pilot update');
   if (url.length > 1900) {
     navigator.clipboard && navigator.clipboard.writeText(list.join(', '));
@@ -234,7 +255,7 @@ $('btn-mail').onclick = () => {
 };
 $('btn-csv').onclick = () => {
   const head = ['email', 'name', 'status', 'premium_until', 'joined', 'last_login'];
-  const rows = visible().map(u => [u.email, u.name, statusOf(u), u.premiumUntil ? fmt(u.premiumUntil) : '', fmt(u.createdAt), fmt(u.lastLogin)]);
+  const rows = visible().map(p => [p.email, p.name, statusOf(p), p.premiumUntil ? fmt(p.premiumUntil) : '', fmt(p.joined), fmt(p.lastLogin)]);
   const csv = [head, ...rows].map(r => r.map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(',')).join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));

@@ -1,8 +1,13 @@
 // ════════════════════════════════════════════════════════
 //  CLOUD  —  js/cloud.js   (Firebase: Google sign-in + Firestore only)
 //  Exposes window.Cloud for the other scripts.
-//  Sign-in uses the pop-up only. (The old full-page redirect fallback fails on
-//  many phones and in WhatsApp/TikTok browsers, which caused the sign-in loop.)
+//
+//  Built for weak networks:
+//   • The app never waits for the database. It starts from what the phone remembers.
+//   • Sign-ups are WRITE-ONLY (no read first), and the database queues the write on the
+//     phone and sends it when the connection allows.
+//   • Premium is looked up by the person's email (grants/{email}), so the admin can
+//     give access to any email he sees, even if that person's profile never saved.
 // ════════════════════════════════════════════════════════
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {
@@ -11,8 +16,8 @@ import {
   onAuthStateChanged, signOut as fbSignOut
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc,
-  collection, getDocs, serverTimestamp
+  getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+  doc, getDoc, setDoc, deleteDoc, collection, getDocs, serverTimestamp, Timestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const cfg = window.APP_CONFIG;
@@ -21,99 +26,135 @@ const auth = initializeAuth(app, {
   persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
   popupRedirectResolver: browserPopupRedirectResolver
 });
-const db = getFirestore(app);
+
+// Offline cache + long-polling (the streaming connection is blocked or unstable on many
+// mobile networks, which showed up as "unavailable").
+let db;
+try {
+  db = initializeFirestore(app, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    experimentalForceLongPolling: true
+  });
+} catch (e) {
+  console.warn('Offline cache unavailable, using normal mode', e);
+  db = getFirestore(app);
+}
+
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: 'select_account' });
 
-const state = { user: null, profile: null, error: null };
-const CHUNK_CHARS = 700000;           // Firestore docs max ~1 MiB, so files are split
+const state = { user: null, profile: null, error: null, pending: false };
+const CHUNK_CHARS = 700000;
 const chunkId = i => String(i).padStart(3, '0');
 const uid = () => { if (!auth.currentUser) throw new Error('Not signed in'); return auth.currentUser.uid; };
+const emailKey = u => String((u && u.email) || '').toLowerCase();
 const wait = ms => new Promise(r => setTimeout(r, ms));
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error('timeout'), { code: 'unavailable' })), ms))
+  ]);
+}
 
 function emit() {
   if (typeof window.onAuthState === 'function') {
-    window.onAuthState({ user: state.user, profile: state.profile, error: state.error });
+    window.onAuthState({ user: state.user, profile: state.profile, error: state.error, pending: state.pending });
   }
 }
 
-async function ensureProfile(user) {
-  const ref = doc(db, 'users', user.uid);
-  let snap = await getDoc(ref);
-  if (!snap.exists()) {
-    await setDoc(ref, {
-      email: user.email, name: user.displayName || '', photo: user.photoURL || '',
-      plan: 'free', premiumUntil: null,
-      createdAt: serverTimestamp(), lastLogin: serverTimestamp()
-    });
-  } else {
-    await updateDoc(ref, {
-      lastLogin: serverTimestamp(), name: user.displayName || '', photo: user.photoURL || ''
-    });
-  }
-  snap = await getDoc(ref);
-  return snap.data();
+// ── what the phone remembers about this person (their plan) ──
+const PKEY = id => 'gp_profile_' + id;
+const fakeTs = ms => ({ toDate: () => new Date(ms), toMillis: () => ms });
+function readMemory(id) { try { return JSON.parse(localStorage.getItem(PKEY(id)) || 'null') || {}; } catch (e) { return {}; } }
+function writeMemory(id, patch) {
+  try { localStorage.setItem(PKEY(id), JSON.stringify({ ...readMemory(id), ...patch })); } catch (e) {}
+}
+function profileFromMemory(user) {
+  const m = readMemory(user.uid);
+  return {
+    email: user.email, name: user.displayName || '',
+    premiumUntil: m.premiumMs ? fakeTs(m.premiumMs) : null,
+    _provisional: true
+  };
 }
 
-// Try a few times (bad network); stop straight away if the rules refuse.
-async function ensureProfileWithRetry(user) {
-  let last;
-  for (let i = 0; i < 3; i++) {
-    try { return await ensureProfile(user); }
-    catch (e) {
-      last = e;
-      if (e && e.code === 'permission-denied') break;
-      await wait(700 * (i + 1));
-    }
-  }
-  throw last;
+// ── record the sign-in: write only, no read first, queued when the network is weak ──
+function recordSignIn(user) {
+  try {
+    // once every 6 hours is plenty (keeps the free daily write limit safe)
+    const k = 'gp_rec_' + user.uid;
+    if (Date.now() - (Number(localStorage.getItem(k)) || 0) < 6 * 3600e3) return;
+    const created = user.metadata && user.metadata.creationTime ? Date.parse(user.metadata.creationTime) : NaN;
+    const data = {
+      uid: user.uid, email: user.email, name: user.displayName || '',
+      lastLogin: serverTimestamp()
+    };
+    if (!isNaN(created)) data.joined = Timestamp.fromMillis(created);
+    setDoc(doc(db, 'signups', user.uid), data, { merge: true })
+      .then(() => { try { localStorage.setItem(k, String(Date.now())); } catch (e) {} })
+      .catch(e => console.warn('signup record', e && e.code));
+  } catch (e) { console.warn(e); }
 }
 
-onAuthStateChanged(auth, async user => {
+// ── premium: looked up by email ──
+let retryTimer = null, retries = 0;
+async function syncPlan(user) {
+  clearTimeout(retryTimer);
+  try {
+    const snap = await withTimeout(getDoc(doc(db, 'grants', emailKey(user))), 10000);
+    if (!auth.currentUser || auth.currentUser.uid !== user.uid) return;
+    const until = snap.exists() ? snap.data().premiumUntil : null;
+    state.profile = {
+      ...(state.profile || profileFromMemory(user)),
+      premiumUntil: until || null, _provisional: false
+    };
+    state.error = null; state.pending = false; retries = 0;
+    writeMemory(user.uid, { premiumMs: until && until.toMillis ? until.toMillis() : 0 });
+    emit();
+  } catch (e) {
+    if (!auth.currentUser || auth.currentUser.uid !== user.uid) return;
+    if (e && e.code === 'permission-denied') { state.error = e; state.pending = false; emit(); return; }
+    // weak or no network: stay quiet, keep what the phone remembers, try again later
+    state.pending = true; emit();
+    if (++retries <= 40) retryTimer = setTimeout(() => syncPlan(user), Math.min(60000, 4000 * retries));
+  }
+}
+window.addEventListener('online', () => { if (auth.currentUser && state.pending) syncPlan(auth.currentUser); });
+
+onAuthStateChanged(auth, user => {
   state.user = user; state.error = null;
-  if (!user) { state.profile = null; emit(); return; }
-  try { state.profile = await ensureProfileWithRetry(user); }
-  catch (e) { console.error('Profile error:', e); state.profile = null; state.error = e; }
-  emit();
+  if (!user) { clearTimeout(retryTimer); state.profile = null; state.pending = false; emit(); return; }
+  state.profile = profileFromMemory(user);
+  state.pending = true;
+  emit();                    // the app opens right now, from what the phone remembers
+  recordSignIn(user);        // queued write
+  syncPlan(user);            // quiet background check
 });
 
 async function retryProfile() {
-  if (!auth.currentUser) return;
-  state.error = null;
-  try { state.profile = await ensureProfileWithRetry(auth.currentUser); }
-  catch (e) { console.error('Profile error:', e); state.error = e; }
-  emit();
-  return !state.error;
+  if (!auth.currentUser) return false;
+  retries = 0;
+  await syncPlan(auth.currentUser);
+  return !state.error && !state.pending;
 }
+async function refreshProfile() { return retryProfile(); }
 
 // Pop-up only. Errors are thrown so account.js can explain them to the person.
 async function signIn() { await signInWithPopup(auth, provider); }
 const signOut = () => fbSignOut(auth);
-
-async function refreshProfile() {
-  if (!auth.currentUser) return null;
-  const snap = await getDoc(doc(db, 'users', auth.currentUser.uid));
-  state.profile = snap.exists() ? snap.data() : null;
-  emit();
-  return state.profile;
-}
-
-async function savePhoto(dataUrl) {
-  await updateDoc(doc(db, 'users', uid()), { customPhoto: dataUrl });
-  if (state.profile) state.profile.customPhoto = dataUrl;
-  emit();
-}
 
 // ── Course backup ──
 async function loadLevels() {
   const s = await getDoc(doc(db, 'users', uid(), 'data', 'levels'));
   return s.exists() ? s.data() : null;
 }
+// returns 'saved' once confirmed, or 'queued' if the network is slow
 async function saveLevels(json, updatedAt) {
-  await setDoc(doc(db, 'users', uid(), 'data', 'levels'), { json, updatedAt });
+  const done = setDoc(doc(db, 'users', uid(), 'data', 'levels'), { json, updatedAt }).then(() => 'saved');
+  return Promise.race([done, wait(15000).then(() => 'queued')]);
 }
 
-// ── Result files (stored in Firestore as base64 chunks) ──
+// ── Result files (Firestore, base64 chunks) ──
 async function listFiles() {
   const s = await getDocs(collection(db, 'users', uid(), 'files'));
   return s.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -152,16 +193,16 @@ async function deleteFile(meta) {
   }
 }
 
-// ── Payment claim (tells the admin panel someone tapped "I've paid") ──
+// ── "I've paid" notice for the admin (queued when the network is weak) ──
 async function claimPayment() {
   const u = auth.currentUser;
-  await setDoc(doc(db, 'claims', u.uid), {
-    email: u.email, name: u.displayName || '', status: 'pending', createdAt: serverTimestamp()
-  });
+  setDoc(doc(db, 'claims', u.uid), {
+    uid: u.uid, email: u.email, name: u.displayName || '', status: 'pending', createdAt: serverTimestamp()
+  }).catch(e => console.warn('claim', e && e.code));
 }
 
 window.Cloud = {
-  signIn, signOut, refreshProfile, retryProfile, savePhoto, loadLevels, saveLevels,
+  signIn, signOut, refreshProfile, retryProfile, loadLevels, saveLevels,
   listFiles, putFile, getFileB64, deleteFile, claimPayment,
   getState: () => ({ ...state })
 };

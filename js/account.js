@@ -45,10 +45,7 @@ function avatarHue(seed) {
 }
 function avatarHTML() {
   const u = Account.user; if (!u) return '';
-  const p = Account.profile || {};
-  const photo = p.customPhoto || u.photoURL || '';
-  const img = photo ? `<img src="${escAttr(photo)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()" />` : '';
-  return `<span class="avatar" style="background:hsl(${avatarHue(u.email)} 48% 38%)"><span class="avatar-ini">${escAttr(initialsOf(u.displayName, u.email))}</span>${img}</span>`;
+  return `<span class="avatar" style="background:hsl(${avatarHue(u.email)} 48% 38%)"><span class="avatar-ini">${escAttr(initialsOf(u.displayName, u.email))}</span></span>`;
 }
 
 // Google blocks sign-in inside the built-in browsers of WhatsApp, TikTok, Facebook etc.
@@ -80,11 +77,16 @@ let signingIn = false, failedTries = 0;
 
 function isGuest() { return sessionStorage.getItem(GUEST_KEY) === '1'; }
 
-function setGate(stateName, message, problem) {
+const KNOWN_KEY = 'gp_signed_in';
+const IDENT_KEY = 'gp_identity';
+function knownUser() { return localStorage.getItem(KNOWN_KEY) === '1'; }
+
+function setGate(stateName, message, problem, tone) {
   const gate = document.getElementById('auth-gate');
   if (!gate) return;
   gate.dataset.state = stateName;
   gate.dataset.problem = problem ? '1' : '0';
+  gate.dataset.tone = tone || '';
   const msg = document.getElementById('auth-gate-msg');
   if (msg) msg.textContent = message || '';
   const inapp = document.getElementById('auth-inapp');
@@ -113,62 +115,60 @@ function continueAsGuest() {
 
 async function startSignIn() {
   if (signingIn) return;
-  if (!window.Cloud) { showToast('Still loading. Try again in a moment.'); return; }
+  if (!window.Cloud) {
+    // sign-in code is still arriving (slow network): start as soon as it is here
+    window.addEventListener('cloud-ready', startSignIn, { once: true });
+    setGate('loading', 'Getting ready. Almost there.', failedTries >= 1);
+    return;
+  }
   signingIn = true;
   const btn = document.getElementById('gate-google-btn');
-  if (btn) { btn.disabled = true; btn.dataset.label = btn.dataset.label || btn.textContent.trim(); }
+  if (btn) btn.disabled = true;
   setGate('signin', 'Opening Google…', failedTries >= 1);
   try {
     await Cloud.signIn();
-    setGate('signin', 'Signed in. Loading your account…', false);
+    setGate('signin', 'Signed in. Opening your account…', false);
   } catch (e) {
-    console.error('Sign-in error:', e && e.code, e);
-    const code = e && e.code;
-    let m;
-    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
-      m = 'The Google window closed before sign-in finished. Tap Continue with Google and choose your account.';
-    } else if (code === 'auth/popup-blocked') {
-      m = 'Your browser blocked the Google window. Allow pop-ups for this site, or open this page in Chrome, then try again.';
-    } else if (code === 'auth/unauthorized-domain') {
-      m = 'This website address is not yet allowed for sign-in. The owner must add it in Firebase → Authentication → Settings → Authorized domains.';
-    } else if (code === 'auth/network-request-failed') {
-      m = 'No internet connection. Check your data or Wi-Fi and try again.';
-    } else {
-      m = 'Sign-in did not finish' + (code ? ' (' + code + ')' : '') + '. Please try again.';
-    }
+    console.warn('Sign-in did not finish:', e && e.code);
     failedTries++;
-    setGate('signin', m, failedTries >= 1);
+    // no error words for students: just a calm line and the way forward
+    setGate('signin', 'Tap Continue with Google to try again, or continue without signing in.', true);
   }
   signingIn = false;
   if (btn) btn.disabled = false;
 }
 
-// If sign-in services don't load (bad network), say so instead of spinning forever
+// Slow connection: keep trying quietly, and offer to continue after 8 seconds.
+// (People who signed in before never see this gate; they go straight into the app.)
 setTimeout(() => {
-  if (!Account.ready && CFG.REQUIRE_LOGIN && !isGuest()) {
-    setGate('error', 'Could not reach sign-in. Check your internet connection, then tap Retry. You can also continue without signing in.', true);
+  if (!Account.ready && CFG.REQUIRE_LOGIN && !isGuest() && !knownUser()) {
+    setGate('loading', 'Getting ready. You can continue now and sign in later.', true);
   }
-}, 12000);
+}, 3500);
 
 // ─── Firebase tells us who is signed in ───
 let lastStatusKey = '', pulledFor = null;
-window.onAuthState = function ({ user, profile, error }) {
+window.onAuthState = function ({ user, profile, error, pending }) {
   Account.ready = true;
   Account.user = user;
   Account.profile = profile;
   Account.profileError = error || null;
+  Account.pending = !!pending;
   Account.status = user ? computeStatus(profile) : 'guest';
   Account.premiumUntil = (profile && profile.premiumUntil)
     ? (profile.premiumUntil.toDate ? profile.premiumUntil.toDate() : new Date(profile.premiumUntil)) : null;
 
   if (user) {
     sessionStorage.removeItem(GUEST_KEY);
+    localStorage.setItem(KNOWN_KEY, '1');
+    try { localStorage.setItem(IDENT_KEY, JSON.stringify({ name: user.displayName || '', email: user.email || '' })); } catch (e) {}
     failedTries = 0;
     setGate('hidden');
-    if (error) showToast('Signed in, but your account record could not be saved (' + (error.code || 'error') + '). Open Your account and tap Retry.');
+    if (error) console.warn('Account sync problem:', error.code);   // admin-only detail, never shown to students
     if (pulledFor !== user.uid) { pulledFor = user.uid; pullLevels(); }
   } else {
     pulledFor = null;
+    localStorage.removeItem(KNOWN_KEY);
     if (CFG.REQUIRE_LOGIN && !isGuest()) setGate('signin', '', false);
     else setGate('hidden');
   }
@@ -190,6 +190,12 @@ function renderAuthSlot() {
   const slot = document.getElementById('auth-slot');
   if (!slot) return;
   if (!Account.user) {
+    if (!Account.ready && knownUser()) {
+      let id = {}; try { id = JSON.parse(localStorage.getItem(IDENT_KEY) || '{}'); } catch (e) {}
+      const ini = escAttr(initialsOf(id.name, id.email));
+      slot.innerHTML = `<span class="auth-chip" style="cursor:default"><span class="avatar" style="background:hsl(${avatarHue(id.email)} 48% 38%)"><span class="avatar-ini">${ini}</span></span><span class="auth-chip-name">${escAttr((id.name || '').split(' ')[0])}</span></span>`;
+      return;
+    }
     slot.innerHTML = `<button class="auth-signin-btn" onclick="startSignIn()">Sign in</button>`;
     return;
   }
@@ -232,9 +238,6 @@ function openAccountModal() {
   if (!Account.user) { startSignIn(); return; }
   const u = Account.user;
   const upgradeLabel = Account.status === 'premium' ? 'Extend premium' : Account.status === 'expired' ? 'Renew premium' : `Go premium — ${naira(CFG.PRICE_NAIRA)}/year`;
-  const warn = Account.profileError
-    ? `<div class="acct-warn">Your account record could not be saved (${escAttr(Account.profileError.code || 'error')}). Your grades are safe on this phone.
-         <button class="btn-secondary-outline acct-btn" onclick="retryAccount(this)">Retry</button></div>` : '';
   openSheet('account-modal', `
     <div class="lib-modal-header">
       <span class="lib-modal-title">Your account</span>
@@ -248,60 +251,23 @@ function openAccountModal() {
           <div class="acct-email">${escAttr(u.email || '')}</div>
         </div>
       </div>
-      ${warn}
       <div class="acct-plan">${planLine()}</div>
       <button class="btn-primary acct-btn" onclick="closeSheet('account-modal');openPremiumModal()">${upgradeLabel}</button>
-      <label class="btn-secondary-outline acct-btn acct-photo">
-        Change profile photo
-        <input type="file" accept="image/*" style="display:none" onchange="onPhotoPicked(this)" />
-      </label>
       <button class="btn-secondary-outline acct-btn" onclick="refreshPlan(this)">Refresh my status</button>
       ${isAdminUser() ? `<a class="btn-secondary-outline acct-btn" href="/admin">Open admin panel</a>` : ''}
       <button class="btn-secondary-outline acct-btn acct-btn--out" onclick="doSignOut()">Sign out</button>
     </div>`);
 }
 
-async function retryAccount(btn) {
-  if (btn) { btn.disabled = true; btn.textContent = 'Trying…'; }
-  let ok = false;
-  try { ok = await Cloud.retryProfile(); } catch (e) { console.error(e); }
-  showToast(ok ? 'Account connected' : 'Still could not connect. Please tell the admin the error code.');
-  openAccountModal();
-}
-
-/** Square-crop + shrink a picture to a tiny JPEG (about 6 KB) */
-async function shrinkAvatar(file) {
-  const bmp = await (window.createImageBitmap ? createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => createImageBitmap(file)) : Promise.reject(new Error('unsupported')));
-  const size = 144, side = Math.min(bmp.width, bmp.height);
-  const c = document.createElement('canvas'); c.width = c.height = size;
-  c.getContext('2d').drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, size, size);
-  if (bmp.close) bmp.close();
-  return c.toDataURL('image/jpeg', 0.72);
-}
-async function onPhotoPicked(input) {
-  const file = input.files && input.files[0];
-  if (!file) return;
-  try {
-    if (!file.type.startsWith('image/')) throw new Error('Please choose a picture.');
-    const dataUrl = await shrinkAvatar(file);
-    await Cloud.savePhoto(dataUrl);
-    showToast('Profile photo updated');
-    openAccountModal();
-  } catch (e) {
-    console.error(e);
-    showToast('Could not change the photo. Try another picture.');
-  }
-}
-
 async function refreshPlan(btn) {
   if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
-  try { await Cloud.refreshProfile(); showToast('Status updated'); }
-  catch (e) { showToast('Could not check. Try again.'); }
+  try { await Cloud.refreshProfile(); } catch (e) { /* quiet: updates by itself later */ }
   openAccountModal();
 }
 
 async function doSignOut() {
   closeSheet('account-modal');
+  localStorage.removeItem(KNOWN_KEY);
   try { await Cloud.signOut(); } catch (e) { console.error(e); }
 }
 
@@ -382,14 +348,19 @@ function setCloudStatus(text) {
 function scheduleCloudSave() {
   if (!Account.user || !window.Cloud) return;
   clearTimeout(syncTimer);
-  setCloudStatus('Syncing…');
+  if (navigator.onLine === false) {
+    setCloudStatus('Saved on this phone. Will back up when you are online');
+    window.addEventListener('online', scheduleCloudSave, { once: true });
+    return;
+  }
+  setCloudStatus('Backing up…');
   syncTimer = setTimeout(async () => {
     try {
-      await Cloud.saveLevels(JSON.stringify(levels), getLocalUpdatedAt() || Date.now());
-      setCloudStatus('Backed up to your account');
+      const r = await Cloud.saveLevels(JSON.stringify(levels), getLocalUpdatedAt() || Date.now());
+      setCloudStatus(r === 'saved' ? 'Backed up to your account' : 'Saved. Backing up when your connection allows');
     } catch (e) {
       console.error('Backup failed', e);
-      setCloudStatus('Backup failed. Will retry on next change');
+      setCloudStatus('Saved on this phone. Backup will retry');
     }
   }, 1500);
 }
@@ -453,7 +424,7 @@ async function pullLevels() {
 
 // ─── init ───
 (function initAccount() {
-  if (!CFG.REQUIRE_LOGIN) setGate('hidden');
+  if (!CFG.REQUIRE_LOGIN || knownUser()) setGate('hidden');   // returning students never wait on the network
   else setGate('loading', '');
   renderAuthSlot();
 })();
