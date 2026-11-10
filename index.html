@@ -6,16 +6,19 @@
   <title>CGPA Calculator — Nigerian 5.0 Scale</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet" />
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=DM+Serif+Display&display=swap" onload="this.onload=null;this.rel='stylesheet'" />
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=DM+Serif+Display&display=swap" /></noscript>
   <link rel="stylesheet" href="css/style.css" />
   <link rel="stylesheet" href="css/nav.css" />
   <link rel="stylesheet" href="css/tools.css" />
   <link rel="stylesheet" href="css/stats.css" />
   <link rel="stylesheet" href="css/account.css" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#0D0F14" />
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
 
@@ -23,7 +26,7 @@
   <header>
     <div class="logo">
       <div class="logo-icon">
-        <img src="image/cgpa_logo_clean.png" alt="CGPA Calculator Logo" />
+        <img src="image/logo-128.png" alt="CGPA Calculator Logo" />
       </div>
       <div>
         <div class="logo-text">GRADE PILOT</div>
@@ -643,7 +646,7 @@
   <!-- SIGN-IN GATE -->
   <div id="auth-gate" class="auth-gate" data-state="loading">
     <div class="auth-card">
-      <div class="auth-logo"><img src="image/cgpa_logo_clean.png" alt="" /></div>
+      <div class="auth-logo"><img src="image/logo-128.png" alt="" /></div>
       <h1 class="auth-title">Grade Pilot</h1>
       <p class="auth-sub">Sign in with Google to keep your levels, courses and grades saved. They'll be waiting on any phone you sign in on.</p>
       <div class="auth-loading"><span class="auth-spinner"></span> Getting things ready…</div>
@@ -678,6 +681,12 @@
   <script src="js/library.js"></script>
   <!-- Firebase (sign-in + database) -->
   <script type="module" src="js/cloud.js"></script>
+  <!-- Keeps the app available on weak / no network -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () { navigator.serviceWorker.register('/sw.js').catch(function () {}); });
+    }
+  </script>
 
 </body>
 </html>
